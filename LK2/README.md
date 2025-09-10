@@ -468,7 +468,7 @@ db.authors.insertOne(
    published_date: ISODate("2010-09-24"),
    pages: 216,
    language: "English",
-   publisher_id: "oreilly"
+   publisher_id: "oreilly" // посилання на документ
 }
 {
    _id: 234567890,
@@ -477,7 +477,7 @@ db.authors.insertOne(
    published_date: ISODate("2011-05-06"),
    pages: 68,
    language: "English",
-   publisher_id: "oreilly"
+   publisher_id: "oreilly" // посилання на документ
 }
  ```
 
@@ -487,7 +487,7 @@ db.authors.insertOne(
  {
    _id: "book001",
    title: "Cell Biology",
-   authors: [
+   authors: [ // вбудовування документів
      {
         author_id: "author124",
         name: "Ellie Smith"
@@ -501,7 +501,7 @@ db.authors.insertOne(
 {
    _id: "book002",
    title: "Organic Chemistry",
-   authors: [
+   authors: [ // вбудовування документів
      {
         author_id: "author290",
         name: "Jane James"
