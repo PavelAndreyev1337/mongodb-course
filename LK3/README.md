@@ -411,22 +411,168 @@ db.runCommand( {
 
 Операції оновлення змінюють існуючі документи в колекції. MongoDB надає такі методи для оновлення документів колекції:
 
-* db.collection.updateOne()
-* db.collection.updateMany()
-* db.collection.replaceOne()
+* `db.collection.updateOne(<filter>, <update>, <options>)`
+* `db.collection.updateMany(<filter>, <update>, <options>)`
+* `db.collection.replaceOne(<filter>, <update>, <options>)`
 
 У MongoDB операції оновлення спрямовані на одну колекцію. Усі операції запису в MongoDB є атомарними на рівні одного документа.
 
-Ви можете вказати критерії або фільтри, які визначають документи для оновлення. Ці фільтри використовують той самий синтаксис, що й операції читання.
+```javascript
+db.inventory.insertMany( [
+   { item: "canvas", qty: 100, size: { h: 28, w: 35.5, uom: "cm" }, status: "A" },
+   { item: "journal", qty: 25, size: { h: 14, w: 21, uom: "cm" }, status: "A" },
+   { item: "mat", qty: 85, size: { h: 27.9, w: 35.5, uom: "cm" }, status: "A" },
+   { item: "mousepad", qty: 25, size: { h: 19, w: 22.85, uom: "cm" }, status: "P" },
+   { item: "notebook", qty: 50, size: { h: 8.5, w: 11, uom: "in" }, status: "P" },
+   { item: "paper", qty: 100, size: { h: 8.5, w: 11, uom: "in" }, status: "D" },
+   { item: "planner", qty: 75, size: { h: 22.85, w: 30, uom: "cm" }, status: "D" },
+   { item: "postcard", qty: 45, size: { h: 10, w: 15.25, uom: "cm" }, status: "A" },
+   { item: "sketchbook", qty: 80, size: { h: 14, w: 21, uom: "cm" }, status: "A" },
+   { item: "sketch pad", qty: 95, size: { h: 22.85, w: 30.5, uom: "cm" }, status: "A" }
+] );
+```
 
-Приклад:
+Для оновлення документа MongoDB надає оператори оновлення, такі як $set, для зміни значень полів. Щоб використовувати оператори оновлення, передайте методам оновлення документ оновлення такого вигляду:
 
 ```javascript
-db.users.updateMany({
-  {age: {$lt: 18}}, // фільтр оновлення
-  {$set: {status: "reject"}} // дія оновлення
-})
+{
+  <update operator>: { <field1>: <value1>, ... },
+  <update operator>: { <field2>: <value2>, ... },
+  ...
+}
 ```
+
+`$set`, створить поле, якщо воно не існує.
+
+У наступному прикладі метод db.collection.updateOne() використовується для колекції inventory для оновлення першого документа, де item дорівнює "paper":
+
+```javascript
+db.inventory.updateOne(
+   { item: "paper" },
+   {
+     $set: { "size.uom": "cm", status: "P" },
+     $currentDate: { lastModified: true }
+   }
+)
+```
+
+* використовує оператор $set для оновлення значення поля size.uom до "cm" та значення поля status до "P",
+* використовує оператор $currentDate для оновлення значення поля lastModified до поточної дати. Якщо поле lastModified не існує, $currentDate створить його. 
+
+
+У наступному прикладі метод db.collection.updateMany() використовується для колекції інвентарю для оновлення всіх документів, кількість яких менша за 50:
+
+```javascript
+db.inventory.updateMany(
+   { "qty": { $lt: 50 } },
+   {
+     $set: { "size.uom": "in", status: "P" },
+     $currentDate: { lastModified: true }
+   }
+)
+```
+
+
+Під час заміни документа, документ-замінник повинен складатися лише з пар поле/значення. Документ-замінник не може містити вирази операторів оновлення. Документ-замінник може мати поля, що відрізняються від полів оригінального документа. У документі-заміннику можна пропустити поле _id, оскільки воно незмінне. Однак, якщо ви все ж таки включаєте поле _id, воно має мати те саме значення, що й поточне.
+У наступному прикладі замінюється перший документ з колекції інвентарю, де елемент: "paper":
+
+```javascript
+db.inventory.replaceOne(
+   { item: "paper" },
+   { item: "paper", instock: [ { warehouse: "A", qty: 60 }, { warehouse: "B", qty: 40 } ] }
+)
+```
+
+Ви можете використовувати позиційні оператори з мовою запитів MongoDB (MQL) для оновлення документів, що містять масиви, без заміни масиву або додавання до нього.
+
+
+```javascript
+db.employees.insertMany(
+   [
+      {
+         _id: 'SF',
+         engineering: [
+            { name: 'Alice', email: 'missingEmail', salary: 100000 },
+            { name: 'Bob', email: 'missingEmail', salary: 75000 }
+         ],
+         sales: [
+            { name: 'Charlie', email: 'charlie@mail.com', salary: 90000, bonus: 1000 }
+         ]
+      },
+      {
+         _id: 'NYC',
+         engineering: [
+            { name: 'Dave', email: 'dave@mail.com', salary: 55000 },
+         ],
+         sales: [
+            { name: 'Ed', email: 'ed@mail.com', salary: 99000, bonus: 2000 },
+            { name: 'Fran', email: 'fran@mail.com', salary: 50000, bonus: 10000 }
+         ]
+      }
+   ]
+);
+```
+
+Щоб оновити лише перший збіг у масиві, використовуйте оператор $. Оператор $ діє як заповнювач для оновлення першого збігу елемента.
+
+У наступному прикладі використовується метод updateOne() з операторами $ та $set для оновлення першої електронної адреси, яка має значення missingEmail в engineering  масиві, на alice@mail.com.
+
+```javascript
+db.employees.updateOne(
+   { "engineering.email": "missingEmail" },
+   { "$set": { "engineering.$.email": "alice@mail.com" } }
+);
+```
+
+Використання оператора $ з $elemMatch для оновлення певного елемента, у наступному прикладі використовуються оператори $elemMatch та $ для оновлення електронної адреси Боба на "bob@mail.com":
+
+```javascript
+db.employees.updateOne(
+   { engineering: { $elemMatch: { name: "Bob", email: "missingEmail" } } },
+   { $set: { "engineering.$.email": "bob@mail.com" } }
+);
+```
+
+Використання оператора $[] для оновлення всіх елементів масиву в документі. Розглянемо випадок, коли ви хочете надати додатковий бонус у розмірі 2000 доларів США своїм співробітникам відділу продажів. Ви можете використовувати метод updateMany() з оператором $[] та оператором $inc, щоб збільшити всі поля bonus в масиві продажів у документі на 2000:
+
+
+```javascript
+db.employees.updateMany(
+   { "_id": "NYC" },
+   { "$inc": { "sales.$[].bonus": 2000 } }
+);
+```
+
+Використання оператора `$[<identifier>]` для оновлення елементів, що відповідають умові фільтра. Розглянемо випадок, коли вам потрібно оновити зарплати певних співробітників, якщо вони відповідають кільком умовам. Ви можете використати метод updateMany() з оператором `$[<identifier>]` для виконання цього завдання.
+
+```javascript
+db.employees.updateMany(
+   {},
+   {
+      "$set": {
+            "engineering.$[elemX].salary": 95000,
+             "sales.$[elemY].salary": 75000
+      }
+   },
+   {
+      "arrayFilters": [
+            { "elemX.name": "Bob", "elemX.salary": 75000 },
+            { "elemY.name": "Ed", "elemY.salary": 50000, }
+      ]
+   }
+);
+```
+
+elemX та elemY представляють два різні фільтри масиву: 
+* Щоб відповідати elemX, об'єкт масиву повинен мати поле name Bob та salary 75000. 
+* Щоб відповідати elemY, об'єкт масиву повинен мати поле name Ed та salary 50000.
+
+Якщо елемент масиву в документі відповідає фільтру elemX, тоді updateMany() встановлює поле salary для об'єкта на 95000. Якщо елемент масиву відповідає фільтру elemY, тоді updateMany() встановлює поле salary для об'єкта на 75000.
+Якщо фільтр не відповідає, відповідна операція $set не спрацьовує.
+
+Ці оператори корисні під час роботи з масивами, оскільки вони позбавляють вас необхідності виконувати повну заміну масиву або розширені маніпуляції на стороні клієнта.
+
+
 ## Видалення
 
 Операції видалення видаляють документи з колекції. MongoDB надає такі методи для видалення документів з колекції:
@@ -436,14 +582,28 @@ db.users.updateMany({
 У MongoDB операції видалення спрямовані на одну колекцію. Усі операції запису в MongoDB є атомарними на рівні одного документа.
 
 Ви можете вказати критерії або фільтри, які визначають документи для видалення. Ці фільтри використовують той самий синтаксис, що й операції читання.
+Щоб видалити всі документи з колекції, передайте порожній фільтр document {} до методу db.collection.deleteMany():
 
-Приклад:
 
 ```javascript
-db.users.deleteMany(
-  { status: "reject" } // фільтр видалення
-)
+db.inventory.deleteMany({})
 ```
+
+Ви можете вказати критерії або фільтри, які визначають документи для видалення. Фільтри використовують той самий синтаксис, що й операції читання.
+
+У наступному прикладі видаляються всі документи з колекції інвентарю, у яких поле статусу дорівнює "A":
+
+```javascript
+db.inventory.deleteMany({ status : "A" })
+```
+
+У наступному прикладі видаляється перший документ зі статусом "D":
+
+```javascript
+db.inventory.deleteOne( { status: "D" } )
+```
+
+Операції видалення не скидають індекси, навіть якщо видаляються всі документи з колекції.
 
 ## Масовий запис
 
