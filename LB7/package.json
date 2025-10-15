@@ -1,0 +1,15 @@
+{
+  "name": "lb7",
+  "version": "1.0.0",
+  "description": "1. Отримати індивідуальний варіант завдання.\r 2. Реалізувати CRUD-операції.\r 3. Використати транзакції до створених CRUD-операцій.\r 7. Обґрунтувати використання транзакцій.",
+  "main": "ex1.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mongodb": "^6.20.0"
+  }
+}

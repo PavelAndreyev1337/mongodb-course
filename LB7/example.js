@@ -1,39 +1,64 @@
-// Приклад модифікації банківських рахунків, використовуючи транзакції
-const db = connect("mongodb://localhost:27017/lb7");
+const { MongoClient } = require("mongodb");
 
-db.accounts.drop()
+async function main() {
+  const uri = "mongodb://localhost:27017";
+  const client = new MongoClient(uri, {
+    writeConcern: { w: "majority" },
+    readConcern: { level: "snapshot" },
+  });
 
-db.accounts.insertMany([
-  { accountId: 1, owner: "Іван", balance: 1000 },
-  { accountId: 2, owner: "Олена", balance: 500 }
-])
+  try {
+    await client.connect();
+    const db = client.db("lb7");
+    const accounts = db.collection("accounts");
 
-const session = db.getMongo().startSession()
-session.startTransaction()
+    // Очистка колекції та вставка початкових даних
+    await accounts.drop().catch(() => {}); // ігноруємо помилку, якщо колекції нема
+    await accounts.insertMany([
+      { accountId: 1, owner: "Іван", balance: 1000 },
+      { accountId: 2, owner: "Олена", balance: 500 },
+    ]);
 
-try {
-  // Зменшуємо баланс відправника
-  db.accounts.updateOne(
-    { accountId: 1, balance: { $gte: 200 } },
-    { $inc: { balance: -200 } },
-    { session }
-  )
+    // Починаємо сесію
+    const session = client.startSession();
 
-  // Збільшуємо баланс отримувача
-  db.accounts.updateOne(
-    { accountId: 2 },
-    { $inc: { balance: 200 } },
-    { session }
-  )
+    try {
+      session.startTransaction();
 
-  // Фіксуємо транзакцію
-  session.commitTransaction()
-  print("Транзакція успішно виконана.")
-} catch(e) {
-  print("Помилка у транзакції, виконуємо відкат: ", e)
-  session.abortTransaction()
-} finally {
-  session.endSession()
+      // Зменшуємо баланс відправника, перевіряємо що достатньо коштів
+      const result1 = await accounts.updateOne(
+        { accountId: 1, balance: { $gte: 200 } },
+        { $inc: { balance: -200 } },
+        { session }
+      );
+      if (result1.matchedCount === 0) {
+        throw new Error("Недостатньо коштів на рахунку відправника");
+      }
+
+      // Збільшуємо баланс отримувача
+      await accounts.updateOne(
+        { accountId: 2 },
+        { $inc: { balance: 200 } },
+        { session }
+      );
+
+      // Фіксуємо транзакцію
+      await session.commitTransaction();
+      console.log("Транзакція успішно виконана.");
+
+    } catch (error) {
+      console.error("Помилка у транзакції, виконуємо відкат:", error);
+      await session.abortTransaction();
+    } finally {
+      await session.endSession();
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    await client.close();
+  }
 }
 
-// mongosh example.js 
+main();
+
+// node example.js
