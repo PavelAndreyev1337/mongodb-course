@@ -39,9 +39,9 @@ rs.initiate()
 Після цього можна використовувати транзакції, навіть якщо у вас лише один сервер у replica set.
 
 ```javascript
-const client = new MongoClient("mongodb://localhost:27017", {
-  writeConcern: { w: 1 },
-  readConcern: { level: "local" }
+const client = new MongoClient(uri, {
+  writeConcern: { w: "majority" },
+  readConcern: { level: "snapshot" },
 });
 ```
 
@@ -81,29 +81,32 @@ MongoDB використовує оптимістичну конкуренцію
 1. Створюється сесія:
 
 ```javascript
-session = db.getMongo().startSession()
+const session = client.startSession();
 ```
 2. Починається транзакція:
 ```javascript
-session.startTransaction()
+session.startTransaction();
 ```
 3. Виконуються операції з вказанням сесії як параметра:
 ```javascript
-javascript
-db.collection1.insertOne({"foo": "bar"}, {session: session})
-db.collection2.updateOne({"baz": 1}, {$set: {"qux": 2}}, {session: session})
+await db.collection('collection1').insertOne({ foo: "bar" }, { session });
+await db.collection('collection2').updateOne(
+  { baz: 1 },
+  { $set: { qux: 2 } },
+  { session }
+);
 ```
 4. Підтверджується транзакція
 ```javascript
-session.commitTransaction()
+await session.commitTransaction();
 ```
 5. Завершується сесія
 ```javascript
-session.endSession()
+await session.endSession();
 ```
 6. Також, якщо виникла помилка транзакцію можна скасувати (ролбек)
 ```javascript
-session.abortTransaction()
+await session.abortTransaction();
 ```
 Продемонстровано стандартний спосіб запуску транзакцій у mongo shell або у скриптах з підтримкою MongoDB.
 Щодо чекпоінтів (checkpoints), в MongoDB вони не є користувацьким явищем, а працюють на рівні механізму збереження даних, зокрема для двигуна збереження WiredTiger. Ці чекпоінти автоматично створюються системою (приблизно кожні 60-100 секунд) і служать для мінімізації втрати даних у разі аварійного завершення роботи. Вони забезпечують стабільність і відновлення бази даних.
@@ -127,81 +130,125 @@ session.abortTransaction()
 # Приклад використання
 1. Створення бази і колекцій
 ```javascript
-// Використовуємо (підключаємось) до бази shopDB (створиться під час першої операції)
-use shopDB
+const { MongoClient } = require('mongodb');
 
-// Створюємо колекцію products і додаємо кілька товарів
-db.products.insertMany([
-  { productId: 1, name: "Ноутбук", stock: 10, price: 1500 },
-  { productId: 2, name: "Смартфон", stock: 15, price: 800 },
-  { productId: 3, name: "Навушники", stock: 30, price: 150 }
-])
+async function initData() {
+  const client = new MongoClient('mongodb://localhost:27017');
+  await client.connect();
+  const db = client.db('shopDB');
 
-// Створюємо колекцію orders (замовлення)
-db.orders.insertOne({ orderId: 100, productId: 1, quantity: 1, status: "completed" })
+  // Створення колекції products і додавання товарів
+  await db.collection('products').insertMany([
+    { productId: 1, name: "Ноутбук", stock: 10, price: 1500 },
+    { productId: 2, name: "Смартфон", stock: 15, price: 800 },
+    { productId: 3, name: "Навушники", stock: 30, price: 150 }
+  ]);
+
+  // Створення колекції orders і додавання першого замовлення
+  await db.collection('orders').insertOne({
+    orderId: 100,
+    productId: 1,
+    quantity: 1,
+    status: "completed"
+  });
+
+  console.log("Дані ініціалізовано");
+  await client.close();
+}
+
+initData();
 ```
 
 2. Використання агрегацій для аналітики,
 порахувати загальну вартість замовлень за кожним товаром:
 
 ```javascript
-db.orders.aggregate([
-  {
-    $lookup: {
-      from: "products",
-      localField: "productId",
-      foreignField: "productId",
-      as: "productDetails"
+const { MongoClient } = require('mongodb');
+
+async function aggregateOrders() {
+  const client = new MongoClient('mongodb://localhost:27017');
+  await client.connect();
+  const db = client.db('shopDB');
+
+  const results = await db.collection('orders').aggregate([
+    {
+      $lookup: {
+        from: "products",
+        localField: "productId",
+        foreignField: "productId",
+        as: "productDetails"
+      }
+    },
+    { $unwind: "$productDetails" },
+    {
+      $group: {
+        _id: "$productId",
+        totalQuantity: { $sum: "$quantity" },
+        totalRevenue: {
+          $sum: {
+            $multiply: ["$quantity", "$productDetails.price"]
+          }
+        }
+      }
     }
-  },
-  { $unwind: "$productDetails" },
-  {
-    $group: {
-      _id: "$productId",
-      totalQuantity: { $sum: "$quantity" },
-      totalRevenue: { $sum: { $multiply: ["$quantity", "$productDetails.price"] } }
-    }
-  }
-])
+  ]).toArray();
+
+  console.log("Агрегація результатів:", results);
+  await client.close();
+}
+
+aggregateOrders();
 ```
 
 Цей агрегаційний пайплайн поєднує замовлення з товарами та вираховує загальну кількість і дохід по кожному товару.
 
 3. Демонстрація транзакції у mongosh
 ```javascript
-// Запускаємо сесію та транзакцію
-const session = db.getMongo().startSession()
-session.startTransaction()
+const { MongoClient } = require('mongodb');
 
-try {
-  // Вставка нового замовлення у колекцію orders
-  db.orders.insertOne(
-    { orderId: 101, productId: 2, quantity: 3, status: "processing" },
-    { session }
-  )
+async function runTransaction() {
+  const client = new MongoClient('mongodb://localhost:27017');
+  await client.connect();
+  const db = client.db('shopDB');
+  const session = client.startSession();
 
-  // Оновлення кількості товару на складі
-  let updateResult = db.products.updateOne(
-    { productId: 2, stock: { $gte: 3 } },
-    { $inc: { stock: -3 } },
-    { session }
-  )
+  try {
+    session.startTransaction();
 
-  if (updateResult.matchedCount === 0) {
-    // Якщо на складі немає потрібної кількості - робимо ролбек
-    throw new Error("Недостатньо товару на складі")
+    // Вставка нового замовлення
+    await db.collection('orders').insertOne(
+      {
+        orderId: 101,
+        productId: 2,
+        quantity: 3,
+        status: "processing"
+      },
+      { session }
+    );
+
+    // Оновлення залишку товару, якщо достатньо
+    const updateResult = await db.collection('products').updateOne(
+      { productId: 2, stock: { $gte: 3 } },
+      { $inc: { stock: -3 } },
+      { session }
+    );
+
+    if (updateResult.matchedCount === 0) {
+      throw new Error("Недостатньо товару на складі");
+    }
+
+    await session.commitTransaction();
+    console.log("Транзакція виконана успішно");
+  } catch (error) {
+    console.error("Транзакція скасована через помилку:", error.message);
+    await session.abortTransaction();
+  } finally {
+    await session.endSession();
+    await client.close();
   }
-
-  // Підтвердження транзакції
-  session.commitTransaction()
-
-  print("Транзакція виконана успішно")
-} catch (error) {
-  print("Транзакція скасована через помилку: " + error.message)
-  session.abortTransaction()
-} finally {
-  session.endSession()
 }
+
+runTransaction();
 ```
 
 У цьому прикладі:
