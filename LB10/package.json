@@ -1,0 +1,14 @@
+{
+  "name": "lb10",
+  "version": "1.0.0",
+  "description": "1. Отримати індивідуальний варіант завдання.\r 2. Створити Change Stream з прослуховуванням події change.\r 3. Відстежити подію з типом операції insert, потім виконати вставку документа.\r 4. Відстежити подію update, потім оновити документ.\r 5. Відстежити подію delete, потім видалити документ.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mongodb": "^6.20.0"
+  }
+}
